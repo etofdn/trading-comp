@@ -183,7 +183,10 @@ export function takePortfolioSnapshots(): void {
     // Prune old snapshots (older than 8 days)
     const cutoff = now - maxAge;
     const firstValid = snapshots.findIndex((s) => s.timestamp >= cutoff);
-    if (firstValid > 0) {
+    if (firstValid === -1) {
+      // All snapshots are older than cutoff — clear entirely
+      snapshots.length = 0;
+    } else if (firstValid > 0) {
       snapshots.splice(0, firstValid);
     }
   }

@@ -5,7 +5,6 @@ import { state } from '../engine/state.ts';
 import { SEASON } from '../config.ts';
 import type {
   TickBroadcast,
-  WindowedLeaderboard,
   LeaderboardEntry,
   WsOutgoingMessage,
 } from '../types.ts';
@@ -44,19 +43,16 @@ function stripPrivateFields(entries: readonly LeaderboardEntry[]) {
 }
 
 /** Broadcast tick + windowed leaderboards to ALL connected clients. */
-export function broadcastTick(
-  payload: TickBroadcast,
-  windowed: WindowedLeaderboard,
-): void {
+export function broadcastTick(payload: TickBroadcast): void {
   if (clients.size === 0) return;
 
   const encoded = JSON.stringify({
     type: 'tick',
     data: {
       timestamp: payload.timestamp,
-      leaderboard: stripPrivateFields(windowed.overall),
-      leaderboard24h: stripPrivateFields(windowed['24h']),
-      leaderboard7d: stripPrivateFields(windowed['7d']),
+      leaderboard: stripPrivateFields(payload.leaderboard),
+      leaderboard24h: stripPrivateFields(payload.leaderboard24h),
+      leaderboard7d: stripPrivateFields(payload.leaderboard7d),
       tickMs: payload.tickMs,
     },
   });

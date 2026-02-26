@@ -41,14 +41,16 @@ app.use(
 
 // ── Pagination helper ──
 const MAX_PAGE_SIZE = 100;
+const HISTORY_MAX_SIZE = 1000;
 
 function parseLimit(
   raw: string | undefined,
   defaultVal: number,
+  maxVal: number = MAX_PAGE_SIZE,
 ): number {
   const parsed = parseInt(raw ?? String(defaultVal), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return defaultVal;
-  return Math.min(parsed, MAX_PAGE_SIZE);
+  if (!Number.isFinite(parsed) || parsed < 1) return Math.min(defaultVal, maxVal);
+  return Math.min(parsed, maxVal);
 }
 
 // ── Rate limiter (in-memory, per-player) ──
@@ -541,13 +543,17 @@ app.get('/api/assets/:id/history', (c) => {
   const asset = state.assets.get(assetId);
   if (!asset) return c.json({ error: 'Asset not found' }, 404);
 
-  const limit = parseLimit(c.req.query('limit'), 500);
+  const limit = parseLimit(c.req.query('limit'), HISTORY_MAX_SIZE, HISTORY_MAX_SIZE);
+  const since = parseInt(c.req.query('since') ?? '0', 10);
   const db = getDb();
-  const rows = db
-    .query(
-      'SELECT spot_price, timestamp FROM price_history WHERE asset_id = ? ORDER BY timestamp DESC LIMIT ?',
-    )
-    .all(assetId, limit) as { spot_price: number; timestamp: number }[];
+
+  const rows = since > 0
+    ? db.query(
+        'SELECT spot_price, timestamp FROM price_history WHERE asset_id = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?',
+      ).all(assetId, since, limit) as { spot_price: number; timestamp: number }[]
+    : db.query(
+        'SELECT spot_price, timestamp FROM price_history WHERE asset_id = ? ORDER BY timestamp DESC LIMIT ?',
+      ).all(assetId, limit) as { spot_price: number; timestamp: number }[];
 
   // Return in chronological order
   return c.json(
@@ -560,13 +566,17 @@ app.get('/api/assets/:id/history', (c) => {
 
 app.get('/api/feeds/:id/history', (c) => {
   const feedId = c.req.param('id');
-  const limit = parseLimit(c.req.query('limit'), 500);
+  const limit = parseLimit(c.req.query('limit'), HISTORY_MAX_SIZE, HISTORY_MAX_SIZE);
+  const since = parseInt(c.req.query('since') ?? '0', 10);
   const db = getDb();
-  const rows = db
-    .query(
-      'SELECT price, timestamp FROM feed_price_history WHERE feed_id = ? ORDER BY timestamp DESC LIMIT ?',
-    )
-    .all(feedId, limit) as { price: number; timestamp: number }[];
+
+  const rows = since > 0
+    ? db.query(
+        'SELECT price, timestamp FROM feed_price_history WHERE feed_id = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?',
+      ).all(feedId, since, limit) as { price: number; timestamp: number }[]
+    : db.query(
+        'SELECT price, timestamp FROM feed_price_history WHERE feed_id = ? ORDER BY timestamp DESC LIMIT ?',
+      ).all(feedId, limit) as { price: number; timestamp: number }[];
 
   return c.json(
     rows.reverse().map((r) => ({

@@ -189,7 +189,7 @@ function persistPriceHistory(feedPrices: Map<string, number>): void {
       `);
 
       for (const asset of state.assets.values()) {
-        if (asset.spotPrice > 0) {
+        if (Number.isFinite(asset.spotPrice)) {
           assetStmt.run(asset.id, asset.spotPrice, now);
         }
       }
@@ -201,7 +201,7 @@ function persistPriceHistory(feedPrices: Map<string, number>): void {
       `);
 
       for (const [feedId, price] of feedPrices) {
-        if (price > 0) {
+        if (Number.isFinite(price)) {
           feedStmt.run(feedId, price, now);
         }
       }

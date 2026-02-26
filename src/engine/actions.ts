@@ -166,7 +166,15 @@ function handleBuy(
     existing.entryValue += netUsdc;
     existing.shares += shares;
     existing.entryPrice = existing.entryValue / existing.shares;
+    // Update mark-to-market immediately
+    existing.currentValue = existing.shares * asset.spotPrice;
+    existing.unrealizedPnl = existing.currentValue - existing.entryValue;
+    existing.unrealizedPnlPct =
+      existing.entryValue > 0
+        ? existing.unrealizedPnl / existing.entryValue
+        : 0;
   } else {
+    const currentValue = shares * asset.spotPrice;
     const pos: Position = {
       id: posKey,
       playerId,
@@ -174,9 +182,9 @@ function handleBuy(
       shares,
       entryPrice: executionPrice,
       entryValue: netUsdc,
-      currentValue: netUsdc,
-      unrealizedPnl: 0,
-      unrealizedPnlPct: 0,
+      currentValue,
+      unrealizedPnl: currentValue - netUsdc,
+      unrealizedPnlPct: netUsdc > 0 ? (currentValue - netUsdc) / netUsdc : 0,
     };
     state.positions.set(posKey, pos);
   }

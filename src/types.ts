@@ -220,6 +220,8 @@ export interface TradeRecord {
 export interface TickBroadcast {
   readonly timestamp: number;
   readonly leaderboard: readonly LeaderboardEntry[];
+  readonly leaderboard24h: readonly LeaderboardEntry[];
+  readonly leaderboard7d: readonly LeaderboardEntry[];
   readonly tickMs: number;
 }
 

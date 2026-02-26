@@ -93,8 +93,10 @@ export function runTick(): void {
   broadcastTick({
     timestamp: Date.now(),
     leaderboard: leaderboard.overall,
+    leaderboard24h: leaderboard['24h'],
+    leaderboard7d: leaderboard['7d'],
     tickMs,
-  }, leaderboard);
+  });
 
   // 8. Send individual portfolio updates
   sendPlayerUpdates();

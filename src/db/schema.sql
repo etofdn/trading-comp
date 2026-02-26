@@ -96,5 +96,6 @@ CREATE INDEX IF NOT EXISTS idx_positions_player ON positions(player_id);
 CREATE INDEX IF NOT EXISTS idx_stakes_player ON stakes(player_id);
 CREATE INDEX IF NOT EXISTS idx_leaderboard_ts ON leaderboard_snapshots(timestamp);
 CREATE INDEX IF NOT EXISTS idx_portfolio_snap ON portfolio_snapshots(player_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snap_timestamp ON portfolio_snapshots(timestamp);
 CREATE INDEX IF NOT EXISTS idx_price_history_asset ON price_history(asset_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_feed_price_history_feed ON feed_price_history(feed_id, timestamp);
