@@ -8,6 +8,7 @@ import type {
   Position,
   StakePosition,
   Constituent,
+  PortfolioSnapshot,
 } from '../types.ts';
 
 interface PlayerRow {
@@ -141,10 +142,32 @@ export function rehydrateState(): void {
     state.stakes.set(stake.id, stake);
   }
 
+  // 5. Load portfolio snapshots (last 8 days for windowed leaderboard)
+  const maxAge = 8 * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - maxAge;
+  const snapRows = db
+    .query('SELECT player_id, total_value, timestamp FROM portfolio_snapshots WHERE timestamp > ? ORDER BY timestamp ASC')
+    .all(cutoff) as { player_id: string; total_value: number; timestamp: number }[];
+
+  for (const row of snapRows) {
+    const snap: PortfolioSnapshot = {
+      playerId: row.player_id,
+      totalValue: row.total_value,
+      timestamp: row.timestamp,
+    };
+    let arr = state.portfolioSnapshots.get(snap.playerId);
+    if (!arr) {
+      arr = [];
+      state.portfolioSnapshots.set(snap.playerId, arr);
+    }
+    arr.push(snap);
+  }
+
   console.log(
     `[recover] Loaded ${state.players.size} players, ` +
     `${state.assets.size} assets, ` +
     `${state.positions.size} positions, ` +
-    `${state.stakes.size} stakes`,
+    `${state.stakes.size} stakes, ` +
+    `${snapRows.length} portfolio snapshots`,
   );
 }

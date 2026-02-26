@@ -3,9 +3,9 @@
 
 import { state } from './state.ts';
 import { priceCache } from '../feeds/cache.ts';
-import { buildLeaderboard } from './leaderboard.ts';
+import { buildLeaderboard, takePortfolioSnapshots } from './leaderboard.ts';
 import { SEASON, MS_PER_YEAR } from '../config.ts';
-import { queuePersistence } from '../db/persist.ts';
+import { queuePersistence, queuePriceHistoryPersist } from '../db/persist.ts';
 import { broadcastTick, sendPlayerUpdates } from '../ws/broadcast.ts';
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -79,23 +79,35 @@ export function runTick(): void {
     stake.lastYieldTick = Date.now();
   }
 
-  // 5. Build leaderboard
+  // 5. Take portfolio snapshots periodically (for 24h/7d windowed leaderboard)
+  if (tickCount % SEASON.portfolioSnapshotIntervalTicks === 0) {
+    takePortfolioSnapshots();
+  }
+
+  // 6. Build windowed leaderboard
   const leaderboard = buildLeaderboard();
 
   const tickMs = performance.now() - tickStart;
 
-  // 6. Broadcast to all connected clients
+  // 7. Broadcast to all connected clients
   broadcastTick({
     timestamp: Date.now(),
-    leaderboard,
+    leaderboard: leaderboard.overall,
+    leaderboard24h: leaderboard['24h'],
+    leaderboard7d: leaderboard['7d'],
     tickMs,
   });
 
-  // 7. Send individual portfolio updates
+  // 8. Send individual portfolio updates
   sendPlayerUpdates();
 
-  // 8. Async persistence (non-blocking)
+  // 9. Async persistence (non-blocking)
   queuePersistence();
+
+  // 10. Persist price history periodically (~every minute)
+  if (tickCount % SEASON.priceSnapshotIntervalTicks === 0) {
+    queuePriceHistoryPersist(prices);
+  }
 
   // Log every 30 ticks (~1 min)
   if (tickCount % 30 === 0) {

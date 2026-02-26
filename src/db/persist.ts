@@ -8,6 +8,12 @@ export function queuePersistence(): void {
   setTimeout(persistDirtyState, 0);
 }
 
+export function queuePriceHistoryPersist(
+  feedPrices: Map<string, number>,
+): void {
+  setTimeout(() => persistPriceHistory(feedPrices), 0);
+}
+
 function persistDirtyState(): void {
   const db = getDb();
 
@@ -121,8 +127,8 @@ function persistDirtyState(): void {
       if (state.trades.length > 0) {
         const tradeStmt = db.prepare(`
           INSERT INTO trades
-            (player_id, asset_id, shares, usdc_amount, side, timestamp)
-          VALUES (?, ?, ?, ?, ?, ?)
+            (player_id, asset_id, shares, usdc_amount, fee, execution_price, side, timestamp)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const t of state.trades) {
@@ -131,9 +137,26 @@ function persistDirtyState(): void {
             t.assetId,
             t.shares,
             t.usdcAmount,
+            t.fee,
+            t.executionPrice,
             t.side,
             t.timestamp,
           );
+        }
+      }
+
+      // Persist portfolio snapshots only when new ones were taken
+      if (state.portfolioSnapshotsDirty) {
+        const portfolioSnapStmt = db.prepare(`
+          INSERT INTO portfolio_snapshots (player_id, timestamp, total_value)
+          VALUES (?, ?, ?)
+        `);
+
+        for (const [playerId, snapshots] of state.portfolioSnapshots) {
+          if (snapshots.length > 0) {
+            const latest = snapshots[snapshots.length - 1]!;
+            portfolioSnapStmt.run(playerId, latest.timestamp, latest.totalValue);
+          }
         }
       }
     });
@@ -146,7 +169,46 @@ function persistDirtyState(): void {
     state.dirtyPositions.clear();
     state.dirtyStakes.clear();
     state.trades.length = 0;
+    state.portfolioSnapshotsDirty = false;
   } catch (err) {
     console.error('[persist] Failed to persist state:', err);
+  }
+}
+
+/** Persist price history for all assets and feeds (called every ~1 min). */
+function persistPriceHistory(feedPrices: Map<string, number>): void {
+  const db = getDb();
+  const now = Date.now();
+
+  try {
+    const txn = db.transaction(() => {
+      // Asset price history
+      const assetStmt = db.prepare(`
+        INSERT INTO price_history (asset_id, spot_price, timestamp)
+        VALUES (?, ?, ?)
+      `);
+
+      for (const asset of state.assets.values()) {
+        if (Number.isFinite(asset.spotPrice)) {
+          assetStmt.run(asset.id, asset.spotPrice, now);
+        }
+      }
+
+      // Feed price history
+      const feedStmt = db.prepare(`
+        INSERT INTO feed_price_history (feed_id, price, timestamp)
+        VALUES (?, ?, ?)
+      `);
+
+      for (const [feedId, price] of feedPrices) {
+        if (Number.isFinite(price)) {
+          feedStmt.run(feedId, price, now);
+        }
+      }
+    });
+
+    txn();
+  } catch (err) {
+    console.error('[persist] Failed to persist price history:', err);
   }
 }

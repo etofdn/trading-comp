@@ -32,6 +32,19 @@ export function initDb(): Database {
     db.run(`${stmt};`);
   }
 
+  // Migrations: add columns that may not exist in older databases
+  const migrations = [
+    'ALTER TABLE trades ADD COLUMN fee REAL NOT NULL DEFAULT 0',
+    'ALTER TABLE trades ADD COLUMN execution_price REAL NOT NULL DEFAULT 0',
+  ];
+  for (const migration of migrations) {
+    try {
+      db.run(migration);
+    } catch {
+      // Column already exists — expected on fresh DBs
+    }
+  }
+
   console.log(`[db] Initialized SQLite at ${DB_PATH}`);
   return db;
 }
