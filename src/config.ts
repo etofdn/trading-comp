@@ -7,10 +7,16 @@ export const SEASON: SeasonConfig = {
   seasonDurationDays: 21,
   baseAnnualYieldBps: 1200,
   royaltyRateBps: 300,
-  maxConstituents: 10,
+  feeBps: 30, // 0.30% trade fee
+  slippageMultiplier: 5000, // slippage severity scalar
+  defaultLiquidityUsdc: 1_000_000, // base liquidity per asset for slippage calc
+  minConstituents: 5,
+  maxConstituents: 8,
   tickIntervalMs: 2000,
   referralBonuses: [10_000, 30_000, 50_000, 10_000],
   leaderboardSize: 100,
+  priceSnapshotIntervalTicks: 30, // persist price history every 30 ticks (~1 min)
+  portfolioSnapshotIntervalTicks: 150, // portfolio snapshot every 150 ticks (~5 min)
 } as const;
 
 export const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;

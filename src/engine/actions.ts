@@ -16,6 +16,12 @@ import type {
 } from '../types.ts';
 
 const ROYALTY_RATE = SEASON.royaltyRateBps / 10_000;
+const FEE_RATE = SEASON.feeBps / 10_000;
+
+function computeSlippageBps(tradeValueUsdc: number): number {
+  const raw = (tradeValueUsdc / SEASON.defaultLiquidityUsdc) * SEASON.slippageMultiplier;
+  return Math.min(raw, 5000); // cap at 50% to prevent negative execution prices
+}
 
 export function processAction(
   playerId: string,
@@ -58,12 +64,12 @@ function handleCreate(
     return { ok: false, error: 'Name must be 1-64 characters' };
   }
   if (
-    constituents.length === 0 ||
+    constituents.length < SEASON.minConstituents ||
     constituents.length > SEASON.maxConstituents
   ) {
     return {
       ok: false,
-      error: `Must have 1-${SEASON.maxConstituents} constituents`,
+      error: `Must have ${SEASON.minConstituents}-${SEASON.maxConstituents} constituents`,
     };
   }
 
@@ -143,13 +149,21 @@ function handleBuy(
     return { ok: false, error: 'Asset has no valid price yet' };
   }
 
-  const shares = usdcAmount / asset.spotPrice;
-  player.usdcBalance -= usdcAmount;
+  // Deduct fee from trade amount
+  const fee = usdcAmount * FEE_RATE;
+  const netUsdc = usdcAmount - fee;
+
+  // Slippage: buyer pays a higher execution price
+  const slippageBps = computeSlippageBps(netUsdc);
+  const executionPrice = asset.spotPrice * (1 + slippageBps / 10_000);
+
+  const shares = netUsdc / executionPrice;
+  player.usdcBalance -= usdcAmount; // full amount including fee
 
   const posKey = `${playerId}:${assetId}`;
   const existing = state.positions.get(posKey);
   if (existing) {
-    existing.entryValue += usdcAmount;
+    existing.entryValue += netUsdc;
     existing.shares += shares;
     existing.entryPrice = existing.entryValue / existing.shares;
   } else {
@@ -158,9 +172,9 @@ function handleBuy(
       playerId,
       assetId,
       shares,
-      entryPrice: asset.spotPrice,
-      entryValue: usdcAmount,
-      currentValue: usdcAmount,
+      entryPrice: executionPrice,
+      entryValue: netUsdc,
+      currentValue: netUsdc,
       unrealizedPnl: 0,
       unrealizedPnlPct: 0,
     };
@@ -173,11 +187,11 @@ function handleBuy(
     activateReferralBonus(player.referredBy, playerId);
   }
 
-  recordTrade(playerId, assetId, shares, usdcAmount, 'buy');
+  recordTrade(playerId, assetId, shares, usdcAmount, fee, executionPrice, 'buy');
   state.dirtyPlayers.add(playerId);
   state.dirtyPositions.add(posKey);
 
-  return { ok: true, shares };
+  return { ok: true, shares, fee, slippageBps, executionPrice };
 }
 
 // ── Sell ──
@@ -196,11 +210,21 @@ function handleSell(
   }
 
   const asset = state.assets.get(assetId)!;
-  const proceeds = sharesToSell * asset.spotPrice;
-  const costBasis = (sharesToSell / pos.shares) * pos.entryValue;
-  const realizedPnl = proceeds - costBasis;
 
-  // Royalty on cloned assets with positive P&L
+  // Slippage: seller gets a lower execution price
+  const grossUsdc = sharesToSell * asset.spotPrice;
+  const slippageBps = computeSlippageBps(grossUsdc);
+  const executionPrice = asset.spotPrice * (1 - slippageBps / 10_000);
+  const proceeds = sharesToSell * executionPrice;
+
+  // Deduct fee from proceeds
+  const fee = proceeds * FEE_RATE;
+  const netProceeds = proceeds - fee;
+
+  const costBasis = (sharesToSell / pos.shares) * pos.entryValue;
+  const realizedPnl = netProceeds - costBasis;
+
+  // Royalty on cloned assets with positive P&L (computed on post-fee P&L)
   let royaltyPaid = 0;
   if (asset.clonedFromId && realizedPnl > 0) {
     const originalAsset = state.assets.get(asset.clonedFromId);
@@ -221,7 +245,7 @@ function handleSell(
   }
 
   const player = state.players.get(playerId)!;
-  player.usdcBalance += proceeds - royaltyPaid;
+  player.usdcBalance += netProceeds - royaltyPaid;
   pos.shares -= sharesToSell;
   pos.entryValue -= costBasis;
 
@@ -229,11 +253,11 @@ function handleSell(
     state.positions.delete(posKey);
   }
 
-  recordTrade(playerId, assetId, sharesToSell, proceeds, 'sell');
+  recordTrade(playerId, assetId, sharesToSell, netProceeds, fee, executionPrice, 'sell');
   state.dirtyPlayers.add(playerId);
   state.dirtyPositions.add(posKey);
 
-  return { ok: true, proceeds, realizedPnl, royaltyPaid };
+  return { ok: true, proceeds: netProceeds, realizedPnl, royaltyPaid, fee, slippageBps, executionPrice };
 }
 
 // ── Stake ──
@@ -375,12 +399,12 @@ function handleRebalance(
     return { ok: false, error: 'Only the creator can rebalance' };
   }
   if (
-    newConstituents.length === 0 ||
+    newConstituents.length < SEASON.minConstituents ||
     newConstituents.length > SEASON.maxConstituents
   ) {
     return {
       ok: false,
-      error: `Must have 1-${SEASON.maxConstituents} constituents`,
+      error: `Must have ${SEASON.minConstituents}-${SEASON.maxConstituents} constituents`,
     };
   }
 
@@ -442,6 +466,8 @@ function recordTrade(
   assetId: string,
   shares: number,
   usdcAmount: number,
+  fee: number,
+  executionPrice: number,
   side: TradeSide,
 ): void {
   state.trades.push({
@@ -449,6 +475,8 @@ function recordTrade(
     assetId,
     shares,
     usdcAmount,
+    fee,
+    executionPrice,
     side,
     timestamp: Date.now(),
   });

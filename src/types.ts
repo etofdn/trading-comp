@@ -6,10 +6,26 @@ export interface SeasonConfig {
   readonly seasonDurationDays: number;
   readonly baseAnnualYieldBps: number;
   readonly royaltyRateBps: number;
+  readonly feeBps: number;
+  readonly slippageMultiplier: number;
+  readonly defaultLiquidityUsdc: number;
+  readonly minConstituents: number;
   readonly maxConstituents: number;
   readonly tickIntervalMs: number;
   readonly referralBonuses: readonly number[];
   readonly leaderboardSize: number;
+  readonly priceSnapshotIntervalTicks: number;
+  readonly portfolioSnapshotIntervalTicks: number;
+}
+
+// ── Leaderboard Windows ──
+export type LeaderboardWindow = '24h' | '7d' | 'overall';
+
+// ── Portfolio Snapshot (for time-windowed leaderboards) ──
+export interface PortfolioSnapshot {
+  readonly playerId: string;
+  readonly totalValue: number;
+  readonly timestamp: number;
 }
 
 // ── Price Feed Categories ──
@@ -173,6 +189,9 @@ export interface ActionSuccess {
   readonly proceeds?: number;
   readonly realizedPnl?: number;
   readonly royaltyPaid?: number;
+  readonly fee?: number;
+  readonly slippageBps?: number;
+  readonly executionPrice?: number;
   readonly stakedShares?: number;
   readonly unstakedShares?: number;
   readonly yieldCollected?: number;
@@ -191,6 +210,8 @@ export interface TradeRecord {
   readonly assetId: string;
   readonly shares: number;
   readonly usdcAmount: number;
+  readonly fee: number;
+  readonly executionPrice: number;
   readonly side: TradeSide;
   readonly timestamp: number;
 }
@@ -235,6 +256,13 @@ export type WsOutgoingMessage =
   | { readonly type: 'action_result'; readonly data: ActionResult }
   | { readonly type: 'error'; readonly data: { readonly message: string } };
 
+// ── Windowed Leaderboard Result ──
+export interface WindowedLeaderboard {
+  readonly overall: readonly LeaderboardEntry[];
+  readonly '24h': readonly LeaderboardEntry[];
+  readonly '7d': readonly LeaderboardEntry[];
+}
+
 // ── Game State (in-memory store) ──
 export interface GameState {
   readonly players: Map<string, Player>;
@@ -247,4 +275,8 @@ export interface GameState {
   readonly dirtyAssets: Set<string>;
   readonly dirtyStakes: Set<string>;
   previousRanks: Map<string, number>;
+  /** Rolling portfolio value snapshots keyed by playerId → array of {totalValue, timestamp} */
+  readonly portfolioSnapshots: Map<string, PortfolioSnapshot[]>;
+  /** Set to true when takePortfolioSnapshots() runs; cleared after persistence */
+  portfolioSnapshotsDirty: boolean;
 }

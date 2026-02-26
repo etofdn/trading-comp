@@ -2,8 +2,11 @@
 
 import type { ServerWebSocket } from 'bun';
 import { state } from '../engine/state.ts';
+import { SEASON } from '../config.ts';
 import type {
   TickBroadcast,
+  WindowedLeaderboard,
+  LeaderboardEntry,
   WsOutgoingMessage,
 } from '../types.ts';
 
@@ -28,12 +31,9 @@ export function getClientCount(): number {
   return clients.size;
 }
 
-/** Broadcast tick + leaderboard to ALL connected clients. */
-export function broadcastTick(payload: TickBroadcast): void {
-  if (clients.size === 0) return;
-
-  // Strip totalValue from leaderboard entries (private data)
-  const publicLeaderboard = payload.leaderboard.map((e) => ({
+/** Strip totalValue from leaderboard entries (private data). */
+function stripPrivateFields(entries: readonly LeaderboardEntry[]) {
+  return entries.map((e) => ({
     playerId: e.playerId,
     twitterHandle: e.twitterHandle,
     avatarUrl: e.avatarUrl,
@@ -41,12 +41,22 @@ export function broadcastTick(payload: TickBroadcast): void {
     rank: e.rank,
     rankDelta: e.rankDelta,
   }));
+}
+
+/** Broadcast tick + windowed leaderboards to ALL connected clients. */
+export function broadcastTick(
+  payload: TickBroadcast,
+  windowed: WindowedLeaderboard,
+): void {
+  if (clients.size === 0) return;
 
   const encoded = JSON.stringify({
     type: 'tick',
     data: {
       timestamp: payload.timestamp,
-      leaderboard: publicLeaderboard,
+      leaderboard: stripPrivateFields(windowed.overall),
+      leaderboard24h: stripPrivateFields(windowed['24h']),
+      leaderboard7d: stripPrivateFields(windowed['7d']),
       tickMs: payload.tickMs,
     },
   });
@@ -119,7 +129,7 @@ function buildPortfolioUpdate(
   const totalValue =
     player.usdcBalance + positionsValue + stakesValue;
   const startingCapital =
-    100_000 + player.bonusCapital;
+    SEASON.startingBalance + player.bonusCapital;
   const returnPct =
     ((totalValue - startingCapital) / startingCapital) * 100;
 

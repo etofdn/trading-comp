@@ -13,4 +13,6 @@ export const state: GameState = {
   dirtyAssets: new Set(),
   dirtyStakes: new Set(),
   previousRanks: new Map(),
+  portfolioSnapshots: new Map(),
+  portfolioSnapshotsDirty: false,
 };

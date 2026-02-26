@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS trades (
   asset_id TEXT NOT NULL REFERENCES assets(id),
   shares REAL NOT NULL,
   usdc_amount REAL NOT NULL,
+  fee REAL NOT NULL DEFAULT 0,
+  execution_price REAL NOT NULL DEFAULT 0,
   side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
   timestamp INTEGER NOT NULL
 );
@@ -72,6 +74,20 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   total_value REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS price_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id TEXT NOT NULL REFERENCES assets(id),
+  spot_price REAL NOT NULL,
+  timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feed_price_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  feed_id TEXT NOT NULL,
+  price REAL NOT NULL,
+  timestamp INTEGER NOT NULL
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_trades_player ON trades(player_id);
 CREATE INDEX IF NOT EXISTS idx_trades_asset ON trades(asset_id);
@@ -80,3 +96,5 @@ CREATE INDEX IF NOT EXISTS idx_positions_player ON positions(player_id);
 CREATE INDEX IF NOT EXISTS idx_stakes_player ON stakes(player_id);
 CREATE INDEX IF NOT EXISTS idx_leaderboard_ts ON leaderboard_snapshots(timestamp);
 CREATE INDEX IF NOT EXISTS idx_portfolio_snap ON portfolio_snapshots(player_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_price_history_asset ON price_history(asset_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_feed_price_history_feed ON feed_price_history(feed_id, timestamp);

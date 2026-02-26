@@ -14,6 +14,8 @@ import {
   signDevToken,
 } from './auth/twitter.ts';
 import { handleMcpRequest } from './mcp/server.ts';
+import { getCachedLeaderboard } from './engine/leaderboard.ts';
+import { getDb } from './db/connection.ts';
 import {
   registerClient,
   removeClient,
@@ -400,46 +402,26 @@ app.post('/api/unstake', async (c) => {
 // ── Leaderboard ──
 app.get('/api/leaderboard', (c) => {
   const limit = parseLimit(c.req.query('limit'), 100);
-  const entries = [];
+  const window = c.req.query('window') ?? 'overall';
 
-  for (const player of state.players.values()) {
-    let totalValue = player.usdcBalance;
-    for (const pos of state.positions.values()) {
-      if (pos.playerId === player.id) {
-        totalValue += pos.currentValue;
-      }
-    }
-    for (const stake of state.stakes.values()) {
-      if (stake.playerId === player.id) {
-        const asset = state.assets.get(stake.assetId);
-        if (asset) {
-          totalValue +=
-            stake.stakedShares * asset.spotPrice +
-            stake.accumulatedYield;
-        }
-      }
-    }
+  const windowed = getCachedLeaderboard();
 
-    const startingCapital =
-      SEASON.startingBalance + player.bonusCapital;
+  type WindowKey = 'overall' | '24h' | '7d';
+  const validWindows: WindowKey[] = ['overall', '24h', '7d'];
+  const selectedWindow: WindowKey = validWindows.includes(window as WindowKey)
+    ? (window as WindowKey)
+    : 'overall';
 
-    entries.push({
-      playerId: player.id,
-      handle: player.twitterHandle,
-      avatarUrl: player.avatarUrl,
-      returnPct:
-        ((totalValue - startingCapital) / startingCapital) * 100,
-    });
-  }
-
-  entries.sort((a, b) => b.returnPct - a.returnPct);
-
-  const ranked = entries.slice(0, limit).map((e, i) => ({
-    ...e,
-    rank: i + 1,
+  const entries = windowed[selectedWindow].slice(0, limit).map((e) => ({
+    playerId: e.playerId,
+    handle: e.twitterHandle,
+    avatarUrl: e.avatarUrl,
+    returnPct: e.totalReturnPct,
+    rank: e.rank,
+    rankDelta: e.rankDelta,
   }));
 
-  return c.json(ranked);
+  return c.json(entries);
 });
 
 // ── Portfolio ──
@@ -551,6 +533,47 @@ app.post('/api/referral/apply', async (c) => {
   state.dirtyPlayers.add(player.id);
 
   return c.json({ ok: true, referredBy: referrer.twitterHandle });
+});
+
+// ── Price History ──
+app.get('/api/assets/:id/history', (c) => {
+  const assetId = c.req.param('id');
+  const asset = state.assets.get(assetId);
+  if (!asset) return c.json({ error: 'Asset not found' }, 404);
+
+  const limit = parseLimit(c.req.query('limit'), 500);
+  const db = getDb();
+  const rows = db
+    .query(
+      'SELECT spot_price, timestamp FROM price_history WHERE asset_id = ? ORDER BY timestamp DESC LIMIT ?',
+    )
+    .all(assetId, limit) as { spot_price: number; timestamp: number }[];
+
+  // Return in chronological order
+  return c.json(
+    rows.reverse().map((r) => ({
+      price: r.spot_price,
+      timestamp: r.timestamp,
+    })),
+  );
+});
+
+app.get('/api/feeds/:id/history', (c) => {
+  const feedId = c.req.param('id');
+  const limit = parseLimit(c.req.query('limit'), 500);
+  const db = getDb();
+  const rows = db
+    .query(
+      'SELECT price, timestamp FROM feed_price_history WHERE feed_id = ? ORDER BY timestamp DESC LIMIT ?',
+    )
+    .all(feedId, limit) as { price: number; timestamp: number }[];
+
+  return c.json(
+    rows.reverse().map((r) => ({
+      price: r.price,
+      timestamp: r.timestamp,
+    })),
+  );
 });
 
 // ── MCP Streamable HTTP endpoint ──
