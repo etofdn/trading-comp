@@ -1,0 +1,37 @@
+name: STE English
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prose:
+    name: Lint changed English
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the STE linter
+        uses: actions/checkout@v7
+        with:
+          repository: bajpainaman/ste-writing
+          ref: main
+          path: .ste-writing-engine
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Vale and lint changed prose
+        env:
+          STE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 .ste-writing-engine/scripts/install.py --preferences .ste-writing-engine/profiles/default.json --style-only
+          python3 .ste-writing-engine/scripts/vale_ci.py
